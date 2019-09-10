@@ -1,0 +1,16 @@
+---
+:login:
+  :username: username
+  :password: password
+:times:
+  :weekday:
+    #list times for all 5 days or just 1 time for all 5 days
+    - 5:15 pm
+  :weekend:
+    #saturday
+    - 8:15 am
+    #sunday
+    - 10:45 am
+# today, week, month
+:schedule: today
+:chromedriver: 'chromedriver_76'
