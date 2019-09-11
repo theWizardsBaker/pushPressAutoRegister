@@ -15,13 +15,14 @@ class ClassRegistration
     	# read config file
 		@config_file = YAML.load(File.read(File.join(File.absolute_path('./', File.dirname(__FILE__)), 'config.yaml')))
 		# @config_file = YAML.load File.read('config.yaml')
+
 		# set the driver
-		raise LoadError.new("Chrome Driver not found at '#{@config_file[:chromedriver]}'.") unless set_chromedriver
+		raise LoadError.new("Chrome Driver not found at '#{@config_file[:chromedriver]}'") unless set_chromedriver
   	end
 
   	def register()
   		# create browser
-		@browser = Watir::Browser.new :chrome, headless: true
+		@browser = Watir::Browser.new :chrome, headless: @config_file[:visual]
 		# login to pushpress
   		raise RuntimeError.new('Could not login. Please check the credentials in the conf.yaml file.') unless login()
   		# wait for how freaking slow their servers are
@@ -32,6 +33,8 @@ class ClassRegistration
 		puts "Working..."
 		# run day / week / month
 		run_time = @config_file[:schedule]
+		# check the schedule option so we don't run to oblivion
+		raise ScriptError.new("Schedule: '#{@config_file[:schedule]}' is not a valid option") unless %w[ today week month ].index @config_file[:schedule]
 
 		loop do
 			# wait for page to load
@@ -40,28 +43,45 @@ class ClassRegistration
 			# get site's dotw and month
 			text = @browser.a( id: 'date-list' ).strong.text.split "\n"
 			day_of_week = text[0].downcase
-			month = (text[1].split " ")[0].downcase
+			calendar_date = text[1]
+			month = (text[1].split ' ')[0].downcase
 			# get the site's day's index
 			current_day_index = DAYS_OF_WEEK.index day_of_week
 			class_time = get_time current_day_index
 			# try to register for the class
 			begin
+				# TO ADD:
+				# check and see if the class has already been added
+
+				success = false
+
 				# check that we're trying to register before the class
-				if Time.new.to_f < Time.parse(class_time).to_f
-					register_class(class_time)
+				# if the date's today
+				if Date.today.strftime("%B %d, %Y").eql? calendar_date
+					# and the time is before the class
+					if Time.new.to_f < Time.parse(class_time).to_f
+						success = register_class(class_time)
+					end
+				else
+					success = register_class(class_time)
+				end
+
+				# output
+				if success
 					puts "SUCCESS: ".green + "Registered for class #{class_time} on #{text[0]} #{text[1]}"
 				else
 					puts "FAILED: ".red + "Too late to register for class #{class_time} on #{text[0]} #{text[1]}"
 				end
+
 			rescue
 				puts "ERROR: ".red + "UNAVAILBLE class #{class_time} on #{text[0]} #{text[1]}"
 			ensure
 				# break after the first iteration. we only want today
-				break if run_time.equals('today')
+				break if run_time.eql?('today')
 				# break after the currenty week day is on saturday
-				break if run_time.equals('week') and current_day_index >= 6
+				break if run_time.eql?('week') and current_day_index >= 6
 				# break if we've moved out of the current month
-				break if run_time.equals('month') and not month.eql?(CUR_MONTH)
+				break if run_time.eql?('month') and not month.eql?(CUR_MONTH)
 
 				# click to the 'next page'
 				next_arrow = @browser.span( class: 'pp-icons-arrow-right-2' ).parent
@@ -134,12 +154,20 @@ class ClassRegistration
 	def register_class(time)
 		# get the class we want
 		span = @browser.span text: time
+		# make sure the span exists
+		return false unless span.exists?
+
+		#span exists
 		# go up to the row parent
 		row = span.parent class: 'tr'
 		# get reservation button
-		# reservation_button = row.div class: 'reservation'
-		# reservation_button.click
-		row.click
+		reservation_button = row.div class: 'reservation'
+		# make sure reservation button exists
+		return false unless reservation_button.exists?
+
+		# reservation exists
+		reservation_button.click
+		# row.click
 		# get ID of the model without the pound sign
 		reservation_id = row.attribute_value('data-target')[1..-1]
 		popup = @browser.div id: reservation_id
@@ -155,6 +183,9 @@ class ClassRegistration
 		modal_button.click
 		# wait for effect to take place
 		Watir::Wait.until(timeout: 60, message: 'Site Timeout!') { @browser.div( class:'success-message', text:'Class reserved successfully').exists? }
+
+		# return success
+		return true
 	end
 end
 

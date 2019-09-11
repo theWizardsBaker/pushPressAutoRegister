@@ -5,12 +5,13 @@
 :times:
   :weekday:
     #list times for all 5 days or just 1 time for all 5 days
-    - 5:15 pm
+    - 5:20 pm
   :weekend:
     #saturday
     - 8:15 am
     #sunday
     - 10:45 am
 # today, week, month
-:schedule: today
+:schedule: week
 :chromedriver: 'chromedriver_76'
+:visual: false
