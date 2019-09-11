@@ -3,16 +3,6 @@ require 'watir'
 require 'yaml'
 require 'colorize'
 
-begin
-	puts "Starting".green
-	registration = ClassRegistration.new
-	registration.register()
-rescue Exception => e
-	puts "#{e.message}".red
-	puts "Aborting".yellow
-	exit!
-end
-
 class ClassRegistration
 
 	# months and days
@@ -26,13 +16,17 @@ class ClassRegistration
 		@config_file = YAML.load(File.read(File.join(File.absolute_path('./', File.dirname(__FILE__)), 'config.yaml')))
 		# @config_file = YAML.load File.read('config.yaml')
 		# set the driver
-		raise LoadError.new("Chrome Driver not found at '#{@config_file[:chromedriver]}'.") unless self.set_chromedriver
+		raise LoadError.new("Chrome Driver not found at '#{@config_file[:chromedriver]}'.") unless set_chromedriver
   	end
 
   	def register()
+  		# create browser
 		@browser = Watir::Browser.new :chrome, headless: true
-
-  		raise RuntimeError.new('Could not login. Please check the credentials in the conf.yaml file.') unless self.login()
+		# login to pushpress
+  		raise RuntimeError.new('Could not login. Please check the credentials in the conf.yaml file.') unless login()
+  		# wait for how freaking slow their servers are
+  		Watir::Wait.until(timeout: 60, message: 'Site Timeout!') { @browser.title.eql?("MKT FIT") }
+  		sleep 3
 		# go to schedule
 		@browser.goto 'https://mktfitness.members.pushpress.com/schedule/index'
 		puts "Working..."
@@ -40,19 +34,27 @@ class ClassRegistration
 		run_time = @config_file[:schedule]
 
 		loop do
+			# wait for page to load
+	  		Watir::Wait.until(timeout: 60, message: 'Schedule Page Timeout!') { @browser.hidden( id: 'csrf').exists? }
+	  		sleep 2
 			# get site's dotw and month
 			text = @browser.a( id: 'date-list' ).strong.text.split "\n"
 			day_of_week = text[0].downcase
 			month = (text[1].split " ")[0].downcase
 			# get the site's day's index
 			current_day_index = DAYS_OF_WEEK.index day_of_week
-			class_time = self.get_time current_day_index
-
+			class_time = get_time current_day_index
+			# try to register for the class
 			begin
-				register(class_time)
-				puts "Registered for class #{class_time} on #{text[0]} #{text[1]}"
+				# check that we're trying to register before the class
+				if Time.new.to_f < Time.parse(class_time).to_f
+					register_class(class_time)
+					puts "SUCCESS: ".green + "Registered for class #{class_time} on #{text[0]} #{text[1]}"
+				else
+					puts "FAILED: ".red + "Too late to register for class #{class_time} on #{text[0]} #{text[1]}"
+				end
 			rescue
-				puts "ERROR: UNAVAILBLE class #{class_time} on #{text[0]} #{text[1]}".red
+				puts "ERROR: ".red + "UNAVAILBLE class #{class_time} on #{text[0]} #{text[1]}"
 			ensure
 				# break after the first iteration. we only want today
 				break if run_time.equals('today')
@@ -60,9 +62,15 @@ class ClassRegistration
 				break if run_time.equals('week') and current_day_index >= 6
 				# break if we've moved out of the current month
 				break if run_time.equals('month') and not month.eql?(CUR_MONTH)
-			end
 
+				# click to the 'next page'
+				next_arrow = @browser.span( class: 'pp-icons-arrow-right-2' ).parent
+				next_arrow.click
+			end
 		end
+
+
+		@browser.close if @browser
 
   	end
 
@@ -91,7 +99,6 @@ class ClassRegistration
 		begin
 			# default driver location
 			default_chromedriver_path = File.join(File.absolute_path('./', File.dirname(__FILE__)), @config_file[:chromedriver])
-			# default_chromedriver_path = 
 			# set driver
 			Selenium::WebDriver::Chrome::Service.driver_path = default_chromedriver_path
 			return true
@@ -124,7 +131,7 @@ class ClassRegistration
 		end
 	end
 
-	def register(time)
+	def register_class(time)
 		# get the class we want
 		span = @browser.span text: time
 		# go up to the row parent
@@ -149,5 +156,17 @@ class ClassRegistration
 		# wait for effect to take place
 		Watir::Wait.until(timeout: 60, message: 'Site Timeout!') { @browser.div( class:'success-message', text:'Class reserved successfully').exists? }
 	end
+end
+
+begin
+	print "Starting".green
+	print " PushPress ".blue
+	puts "auto-registration".green
+	registration = ClassRegistration.new
+	registration.register()
+rescue Exception => e
+	puts "#{e.message}".red
+	puts "Aborting".yellow
+	exit!
 end
 
