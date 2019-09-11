@@ -50,8 +50,6 @@ class ClassRegistration
 			class_time = get_time current_day_index
 			# try to register for the class
 			begin
-				# TO ADD:
-				# check and see if the class has already been added
 
 				success = false
 
